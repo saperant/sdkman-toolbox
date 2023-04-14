@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Run at 03:23 UTC on Thursdays
+  #schedule:
+  # - cron: '23 3 * * 6'
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+        matrix:
+            include:
+                - fedora: 38
+                  latest: true
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Build
+        env:
+            FEDORA_VERSION: ${{ matrix.fedora }}
+        run: |
+            ./build.sh
+            podman inspect sdkman-toolbox:$FEDORA_VERSION | jq '.[0].Config.Labels'
+      - name: Push
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USER: ${{ github.actor }}
+        run: |
+          sh -c 'echo $GITHUB_TOKEN' | sh -c 'podman login --password-stdin -u $GITHUB_USER ghcr.io'
+          podman push sdkman-toolbox:${{ matrix.fedora }} \
+              ghcr.io/saperant/sdkman-toolbox:${{ matrix.fedora }}
+      - name: Push Latest
+        if: ${{ github.ref == 'refs/heads/main' && matrix.latest }}
+        run: |
+          podman push sdkman-toolbox:${{ matrix.fedora }} \
+              ghcr.io/saperant/sdkman-toolbox:latest
